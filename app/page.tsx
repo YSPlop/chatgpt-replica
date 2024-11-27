@@ -1,34 +1,59 @@
 "use client";
-
 import { useState, useEffect } from 'react';
 import { FiSend } from 'react-icons/fi';
+import { supabase } from '../lib/supabaseClient';
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<{ role: string; content: string; id: string }[]>([]);
+  const [messages, setMessages] = useState<{ id: string; role: string; content: string }[]>([]);
   const [input, setInput] = useState('');
 
+  // Fetch persisted messages on page load
+  useEffect(() => {
+    const fetchMessages = async () => {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching messages:', error);
+        return;
+      }
+
+      setMessages(data || []);
+    };
+
+    fetchMessages();
+  }, []);
+
+  // Handle sending messages
   const handleSend = async () => {
     if (!input.trim()) return;
 
-    const userMessage = { role: 'user', content: input, id: crypto.randomUUID() };
+    // Create user message with unique ID
+    const userMessage = { id: crypto.randomUUID(), role: 'user', content: input };
     setMessages((prev) => [...prev, userMessage]);
 
-    // Simulate API response
+    // Save user message to Supabase
+    await supabase.from('messages').insert([userMessage]);
+
     const response = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt: input }),
     });
+
     const data = await response.json();
 
     if (data?.response) {
-      const botMessage = {
-        role: 'assistant',
-        content: data.response,
-        id: crypto.randomUUID(),
-      };
+      // Create bot message with unique ID
+      const botMessage = { id: crypto.randomUUID(), role: 'assistant', content: data.response };
       setMessages((prev) => [...prev, botMessage]);
+
+      // Save bot message to Supabase
+      await supabase.from('messages').insert([botMessage]);
     }
+
     setInput('');
   };
 
@@ -36,7 +61,7 @@ export default function ChatPage() {
     <div className="flex flex-col h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
       {/* Chat Messages */}
       <div className="flex-1 overflow-y-auto p-4 backdrop-blur-lg bg-opacity-50 bg-gradient-to-tl from-gray-800/50 via-gray-700/30 to-gray-900/50">
-        {messages.map((msg, idx) => (
+        {messages.map((msg) => (
           <div
             key={msg.id}
             className={`flex ${
